@@ -10,6 +10,7 @@ add_library(remap_library STATIC
     src/color.c
     src/convert.c
     src/diff.c
+    src/palette.c
 )
 set_target_properties(remap_library
     PROPERTIES OUTPUT_NAME remap
@@ -20,6 +21,7 @@ add_executable(remap_executable
 )
 target_link_libraries(remap_executable
     remap_library
+    m
 )
 set_target_properties(remap_executable
     PROPERTIES OUTPUT_NAME remap

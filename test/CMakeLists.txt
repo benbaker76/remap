@@ -13,6 +13,7 @@ add_executable(convert
 target_link_libraries(convert
     remap_library
     myassert
+    m
 )
 
 add_executable(diff
@@ -21,4 +22,5 @@ add_executable(diff
 target_link_libraries(diff
     remap_library
     myassert
+    m
 )

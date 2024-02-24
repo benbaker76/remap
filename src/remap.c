@@ -9,6 +9,7 @@
 #include "stb/stb_image_write.h"
 #include "convert.h"
 #include "diff.h"
+#include "palette.h"
 
 const char* get_filename_ext(const char* filename) {
     const char* dot = strrchr(filename, '.');
@@ -48,33 +49,67 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
     char* outputFilename = argv[3];
+    const char* paletteFileExtension = get_filename_ext(paletteFilename);
 	const char* outputFileExtension = get_filename_ext(outputFilename);
 
     int inputWidth, inputHeight, inputFormat;
     unsigned char* inputImage = stbi_load(inputFilename, &inputWidth, &inputHeight, &inputFormat, 0);
 
+    unsigned char* paletteImage = NULL;
     int paletteWidth, paletteHeight, paletteFormat;
-    unsigned char* paletteImage = stbi_load(paletteFilename, &paletteWidth, &paletteHeight, &paletteFormat, 0);
+    Color* colorPalette = NULL;
+    int paletteCount = 0, transparentIndex = -1;
+	if (strcmp(paletteFileExtension, "act") == 0) {
+		read_palette(paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
+	} else if (strcmp(paletteFileExtension, "pal") == 0) {
+		read_palette(paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
+	} else if (strcmp(paletteFileExtension, "gpl") == 0) {
+		read_palette(paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
+	} else if (strcmp(paletteFileExtension, "txt") == 0) {
+		read_palette(paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
+	} else if (strcmp(paletteFileExtension, "png") == 0) {
+		paletteImage = stbi_load(paletteFilename, &paletteWidth, &paletteHeight, &paletteFormat, 0);
+	} else {
+		fprintf(stderr, "The file extension \"%s\" is not supported. Please use one of the following instead: act, pal, gpl, txt, png\n", paletteFilename);
+	}
 
-    rgbcolor rgbPaletteColors[paletteWidth * paletteHeight];
+    rgbcolor* rgbPaletteColors = NULL;
 
-    for (int i = 0; i < paletteWidth * paletteHeight; i++) {
-        float R = (float) paletteImage[i * paletteFormat + 0];
-        float G = (float) paletteImage[i * paletteFormat + 1];
-        float B = (float) paletteImage[i * paletteFormat + 2];
+    if (colorPalette != NULL)
+    {
+        paletteWidth = paletteCount;
+        paletteHeight = 1;
+        paletteFormat = 3;
 
-        if (paletteFormat == 4) {
-            float A = (float) paletteImage[i * paletteFormat + 3] / 255.0f;
-            rgbacolor rgba;
-            rgbacolor_init(&rgba, R, G, B, A);
-            rgbcolor rgb;
-            rgba_to_rgb(&rgba, &rgb, NULL);
-            R = rgb.R;
-            G = rgb.G;
-            B = rgb.B;
+        rgbPaletteColors = (rgbcolor*) malloc(paletteCount * sizeof(rgbcolor));
+        for (int i = 0; i < paletteCount; i++) {
+            float R = (float) colorPalette[i].R;
+            float G = (float) colorPalette[i].G;
+            float B = (float) colorPalette[i].B;
+            rgbcolor_init(rgbPaletteColors + i, R, G, B);
         }
-        
-        rgbcolor_init(rgbPaletteColors + i, R, G, B);
+    }
+    else
+    {
+        rgbPaletteColors = (rgbcolor*) malloc(paletteWidth * paletteHeight * sizeof(rgbcolor));
+        for (int i = 0; i < paletteWidth * paletteHeight; i++) {
+            float R = (float) paletteImage[i * paletteFormat + 0];
+            float G = (float) paletteImage[i * paletteFormat + 1];
+            float B = (float) paletteImage[i * paletteFormat + 2];
+
+            if (paletteFormat == 4) {
+                float A = (float) paletteImage[i * paletteFormat + 3] / 255.0f;
+                rgbacolor rgba;
+                rgbacolor_init(&rgba, R, G, B, A);
+                rgbcolor rgb;
+                rgba_to_rgb(&rgba, &rgb, NULL);
+                R = rgb.R;
+                G = rgb.G;
+                B = rgb.B;
+            }
+            
+            rgbcolor_init(rgbPaletteColors + i, R, G, B);
+        }
     }
 
     qsort(rgbPaletteColors, paletteWidth * paletteHeight, sizeof(rgbcolor), compareRgbcolor);
@@ -95,6 +130,8 @@ int main(int argc, char** argv) {
             }
         }
     }
+
+    free(rgbPaletteColors);
 
     labcolor uniqueLabPaletteColors[countOfUniquePaletteColors];
     for (int i = 0; i < countOfUniquePaletteColors; i++) {

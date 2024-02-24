@@ -2,7 +2,7 @@
 
 ## Description
 
-`remap` allows you to remap the colors of an image to a limited set of colors specified by your palette.
+`remap` allows you to remap the colors of an image to a limited set of colors specified by your palette. Supported palette formats are Act, Microsoft Pal, JASC, GIMP, Paint .NET and png.
 
 ## Installation
 
@@ -19,7 +19,7 @@ make install
 ## Usage
 
 ```
-remap inputFilename paletteFilename outputFilename
+remap <inputFilename> <paletteFilename> <outputFilename>
 ```
 
 ## Example
