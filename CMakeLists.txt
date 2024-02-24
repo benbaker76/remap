@@ -11,6 +11,7 @@ add_library(remap_library STATIC
     src/convert.c
     src/diff.c
     src/palette.c
+    src/lodepng.c
 )
 set_target_properties(remap_library
     PROPERTIES OUTPUT_NAME remap
