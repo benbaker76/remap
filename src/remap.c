@@ -157,9 +157,9 @@ int main(int argc, char** argv) {
     state.encoder.auto_convert = 0;
 
     int imageSize = (inputWidth * inputHeight * 4 + 7) / 8;
-    unsigned char* image = (unsigned char*)malloc(imageSize);
-    memset(image, 0, imageSize);
-    if (!image) {
+    unsigned char* outputImage = (unsigned char*)malloc(imageSize);
+    memset(outputImage, 0, imageSize);
+    if (!outputImage) {
         perror("Failed to allocate memory for image");
         return EXIT_FAILURE;
     }
@@ -187,27 +187,27 @@ int main(int argc, char** argv) {
             }
         }
 
-        image[byte_index] |= (unsigned char)(colorIndex << (byte_half ? 0 : 4));
+        outputImage[byte_index] |= (unsigned char)(colorIndex << (byte_half ? 0 : 4));
     }
 
     unsigned char* buffer;
     size_t buffer_size;
-    if (lodepng_encode(&buffer, &buffer_size, image, inputWidth, inputHeight, &state)) {
+    if (lodepng_encode(&buffer, &buffer_size, outputImage, inputWidth, inputHeight, &state)) {
         fprintf(stderr, "Encoder error: %s\n", lodepng_error_text(state.error));
-        free(image);
+        free(outputImage);
         lodepng_state_cleanup(&state);
         return EXIT_FAILURE;
     }
 
     if (lodepng_save_file(buffer, buffer_size, outputFilename)) {
         fprintf(stderr, "Error saving PNG file\n");
-        free(image);
+        free(outputImage);
         free(buffer);
         lodepng_state_cleanup(&state);
         return EXIT_FAILURE;
     }
     
-    free(image);
+    free(outputImage);
     free(buffer);
     lodepng_state_cleanup(&state);
 
