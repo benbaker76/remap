@@ -19,8 +19,15 @@ make install
 ## Usage
 
 ```
-remap <inputFilename> <paletteFilename> <outputFilename>
+remap [options] <inputFilename> <paletteFilename> <outputFilename>
 ```
+
+## Options
+
+| option          | alias             | description     |
+| --------------- | ----------------- | --------------- |
+| `-r min-max`    | `--range min-max` | Use a range of colors from the palette |
+| `-b 4\|8`        | `--bits 4\|8`      | Bit depth of png output (default 8) |
 
 ## Example
 

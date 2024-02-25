@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include <getopt.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -36,23 +37,57 @@ int compareRgbcolor(const void* a, const void* b) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 4) {
-        fprintf(stderr, "Usage: %s inputFilename paletteFilename outputFilename\n", argv[0]);
+    int rangeMin = 0;
+    int rangeMax = -1;
+    int bitDepth = 8;
+
+    static struct option long_options[] = {
+        {"range", required_argument, 0, 'r'},
+        {"bits", required_argument, 0, 'b'},
+        {0, 0, 0, 0}
+    };
+
+   const char *usage_str = 
+        "Usage: %s\n"
+        "  --range min-max\n"
+        "  --bits 4|8 (default 8)\n"
+        "  <inputFilename> <paletteFilename> <outputFilename>\n";
+
+    int option;
+    while ((option = getopt_long(argc, argv, "r:b:", long_options, NULL)) != -1) {
+        switch (option) {
+            case 'r':
+                sscanf(optarg, "%d-%d", &rangeMin, &rangeMax);
+                break;
+            case 'b':
+                bitDepth = atoi(optarg);
+                break;
+            default:
+                fprintf(stderr, usage_str, argv[0], argv[0]);
+                return EXIT_FAILURE;
+        }
+    }
+
+    if (argc - optind < 3) {
+        fprintf(stderr, usage_str, argv[0]);
         return EXIT_FAILURE;
     }
-    char* inputFilename = argv[1];
-	if (access(inputFilename, F_OK) == -1) {
-		fprintf(stderr, "%s cannot be found\n", inputFilename);
-		return EXIT_FAILURE;
-	}
-    char* paletteFilename = argv[2];
-	if (access(paletteFilename, F_OK) == -1) {
-		fprintf(stderr, "%s cannot be found\n", paletteFilename);
-		return EXIT_FAILURE;
-	}
-    char* outputFilename = argv[3];
+
+    char* inputFilename = argv[optind];
+    if (access(inputFilename, F_OK) == -1) {
+        fprintf(stderr, "%s cannot be found\n", inputFilename);
+        return EXIT_FAILURE;
+    }
+
+    char* paletteFilename = argv[optind + 1];
+    if (access(paletteFilename, F_OK) == -1) {
+        fprintf(stderr, "%s cannot be found\n", paletteFilename);
+        return EXIT_FAILURE;
+    }
+
+    char* outputFilename = argv[optind + 2];
     const char* paletteFileExtension = get_filename_ext(paletteFilename);
-	const char* outputFileExtension = get_filename_ext(outputFilename);
+    const char* outputFileExtension = get_filename_ext(outputFilename);
 
     int inputWidth, inputHeight, inputFormat;
     unsigned char* inputImage = stbi_load(inputFilename, &inputWidth, &inputHeight, &inputFormat, STBI_rgb_alpha);
@@ -138,12 +173,16 @@ int main(int argc, char** argv) {
         free(rgbPaletteColors);
     }
 
+    if (rangeMax == -1) {
+        rangeMax = countOfUniquePaletteColors - 1;
+    }
+
     liq_attr *attr = liq_attr_create();
-    liq_set_max_colors(attr, countOfUniquePaletteColors);
+    liq_set_max_colors(attr, rangeMax-rangeMin+1);
 
     liq_image *inputLiqImage = liq_image_create_rgba(attr, inputImage, inputWidth, inputHeight, 0);
 
-    for (int i = countOfUniquePaletteColors-1; i >= 0; i--) {
+    for (int i = rangeMax; i >= rangeMin; i--) {
         liq_image_add_fixed_color(inputLiqImage, (liq_color){uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255});
     }
 
@@ -158,18 +197,28 @@ int main(int argc, char** argv) {
     LodePNGState state;
     lodepng_state_init(&state);
 
-    for (int i = 0; i < palette->count; i++) {
-        lodepng_palette_add(&state.info_png.color, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
-        lodepng_palette_add(&state.info_raw, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
+    if (bitDepth == 4)
+    {
+        for (int i = rangeMin; i <= rangeMax; i++) {
+            lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+            lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < countOfUniquePaletteColors; i++) {
+            lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+            lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+        }
     }
 
     state.info_png.color.colortype = LCT_PALETTE;
-    state.info_png.color.bitdepth = 4;
+    state.info_png.color.bitdepth = bitDepth;
     state.info_raw.colortype = LCT_PALETTE;
-    state.info_raw.bitdepth = 4;
+    state.info_raw.bitdepth = bitDepth;
     state.encoder.auto_convert = 0;
 
-    int imageSize = (inputWidth * inputHeight * 4 + 7) / 8;
+    int imageSize = (inputWidth * inputHeight * 4 + 7) / (bitDepth == 4 ? 8 : 1);
     unsigned char* outputImage = (unsigned char*)malloc(imageSize);
     memset(outputImage, 0, imageSize);
     if (!outputImage) {
@@ -177,12 +226,21 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    for (int i = 0; i < inputWidth * inputHeight; i++) {
-        size_t byte_index = i / 2;
-        int byte_half = i % 2 == 1;
-        int colorIndex = quantizedImage[i];
+    if (bitDepth == 4)
+    {
+        for (int i = 0; i < inputWidth * inputHeight; i++) {
+            size_t byte_index = i / 2;
+            int byte_half = i % 2 == 1;
+            int colorIndex = quantizedImage[i];
 
-        outputImage[byte_index] |= (unsigned char)(colorIndex << (byte_half ? 0 : 4));
+            outputImage[byte_index] |= (unsigned char)(colorIndex << (byte_half ? 0 : 4));
+        }
+    }
+    else if(bitDepth == 8)
+    {
+        for (int i = 0; i < inputWidth * inputHeight; i++) {
+            outputImage[i] = quantizedImage[i] + rangeMin;
+        }
     }
 
     liq_result_destroy(quantizationResult);
