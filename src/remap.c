@@ -11,6 +11,7 @@
 #include "diff.h"
 #include "palette.h"
 #include "lodepng.h"
+#include "libimagequant.h"
 
 const char* get_filename_ext(const char* filename) {
     const char* dot = strrchr(filename, '.');
@@ -54,7 +55,7 @@ int main(int argc, char** argv) {
 	const char* outputFileExtension = get_filename_ext(outputFilename);
 
     int inputWidth, inputHeight, inputFormat;
-    unsigned char* inputImage = stbi_load(inputFilename, &inputWidth, &inputHeight, &inputFormat, 0);
+    unsigned char* inputImage = stbi_load(inputFilename, &inputWidth, &inputHeight, &inputFormat, STBI_rgb_alpha);
 
     unsigned char* paletteImage = NULL;
     int paletteWidth, paletteHeight, paletteFormat;
@@ -137,17 +138,29 @@ int main(int argc, char** argv) {
         free(rgbPaletteColors);
     }
 
-    labcolor uniqueLabPaletteColors[countOfUniquePaletteColors];
-    for (int i = 0; i < countOfUniquePaletteColors; i++) {
-        rgb_to_lab(uniqueRgbPaletteColors + i, uniqueLabPaletteColors + i);
+    liq_attr *attr = liq_attr_create();
+    liq_set_max_colors(attr, countOfUniquePaletteColors);
+
+    liq_image *inputLiqImage = liq_image_create_rgba(attr, inputImage, inputWidth, inputHeight, 0);
+
+    for (int i = countOfUniquePaletteColors-1; i >= 0; i--) {
+        liq_image_add_fixed_color(inputLiqImage, (liq_color){uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255});
     }
+
+    liq_result *quantizationResult;
+    liq_image_quantize(inputLiqImage, attr, &quantizationResult);
+
+    unsigned char* quantizedImage = (unsigned char*)malloc(inputWidth * inputHeight);
+
+    liq_write_remapped_image(quantizationResult, inputLiqImage, quantizedImage, inputWidth * inputHeight);
+    const liq_palette *palette = liq_get_palette(quantizationResult);
     
     LodePNGState state;
     lodepng_state_init(&state);
 
-    for (int i = 0; i < countOfUniquePaletteColors; i++) {
-        lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
-        lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+    for (int i = 0; i < palette->count; i++) {
+        lodepng_palette_add(&state.info_png.color, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
+        lodepng_palette_add(&state.info_raw, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
     }
 
     state.info_png.color.colortype = LCT_PALETTE;
@@ -167,28 +180,14 @@ int main(int argc, char** argv) {
     for (int i = 0; i < inputWidth * inputHeight; i++) {
         size_t byte_index = i / 2;
         int byte_half = i % 2 == 1;
-        float R = (float) inputImage[i * inputFormat + 0];
-        float G = (float) inputImage[i * inputFormat + 1];
-        float B = (float) inputImage[i * inputFormat + 2];
-
-        rgbcolor rgb;
-        rgbcolor_init(&rgb, R, G, B);
-
-        int colorIndex = 0;
-        labcolor lab;        
-        rgb_to_lab(&rgb, &lab);
-        float minDiff = 100.0f;
-
-        for (int i = 0; i < countOfUniquePaletteColors; i++) {
-            float diff = ciede2000(&lab, uniqueLabPaletteColors + i);
-            if (diff < minDiff) {
-                minDiff = diff;
-                colorIndex = i;
-            }
-        }
+        int colorIndex = quantizedImage[i];
 
         outputImage[byte_index] |= (unsigned char)(colorIndex << (byte_half ? 0 : 4));
     }
+
+    liq_result_destroy(quantizationResult);
+    liq_image_destroy(inputLiqImage);
+    free(quantizedImage);
 
     unsigned char* buffer;
     size_t buffer_size;

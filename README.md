@@ -2,7 +2,7 @@
 
 ## Description
 
-`remap` allows you to remap the colors of an image to a limited set of colors specified by your palette. Supported palette formats are Act, Microsoft Pal, JASC, GIMP, Paint .NET and png.
+`remap` allows you to remap the colors of an image to a limited set of colors specified by your palette using [libimagequant](https://github.com/lovell/libimagequant). Supported palette formats are Act, Microsoft Pal, JASC, GIMP, Paint .NET and png.
 
 ## Installation
 
@@ -36,4 +36,5 @@ remap dungeon.png endesga-32-1x.png output.png
 
 ## References
 
-* https://github.com/markusn/color-diff
+* [color-diff](https://github.com/markusn/color-diff)
+* [libimagequant](https://github.com/lovell/libimagequant)

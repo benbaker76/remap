@@ -12,6 +12,13 @@ add_library(remap_library STATIC
     src/diff.c
     src/palette.c
     src/lodepng.c
+    src/blur.c
+    src/libimagequant.c
+    src/mediancut.c
+    src/mempool.c
+    src/nearest.c
+    src/pam.c
+    src/viter.c
 )
 set_target_properties(remap_library
     PROPERTIES OUTPUT_NAME remap
