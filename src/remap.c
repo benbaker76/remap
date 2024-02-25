@@ -36,7 +36,13 @@ int compareRgbcolor(const void* a, const void* b) {
     return perfectHashRgbcolor(rgb1) - perfectHashRgbcolor(rgb2);
 }
 
+void libimagequant_log(const liq_attr*, const char *message, void* user_info) {
+    //fprintf(stderr, "%s\n", message);
+}
+
 int main(int argc, char** argv) {
+    int result = EXIT_SUCCESS;
+
     static struct options {
         const char* inputFilename;
         const char* paletteFilename;
@@ -84,6 +90,7 @@ int main(int argc, char** argv) {
 
     if (argc - optind < 3) {
         fprintf(stderr, usage_str, argv[0]);
+
         return EXIT_FAILURE;
     }
 
@@ -192,20 +199,47 @@ int main(int argc, char** argv) {
     }
 
     liq_attr *attr = liq_attr_create();
-    liq_set_max_colors(attr, options.rangeMax-options.rangeMin+1);
+    if (liq_set_max_colors(attr, options.rangeMax-options.rangeMin+1) != LIQ_OK)
+    {
+        fprintf(stderr, "Failed to set max colors\n");
+        result = EXIT_FAILURE;
+        goto exit;
+    }
+
+    if (liq_set_quality(attr, 0, 100) != LIQ_OK)
+    {
+        fprintf(stderr, "Failed to set quality\n");
+        result = EXIT_FAILURE;
+        goto exit;
+    }
+
+    liq_set_log_callback(attr, libimagequant_log, NULL);
 
     liq_image *inputLiqImage = liq_image_create_rgba(attr, inputImage, inputWidth, inputHeight, 0);
 
-    for (int i = options.rangeMax; i >= options.rangeMin; i--) {
-        liq_image_add_fixed_color(inputLiqImage, (liq_color){uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255});
+    for (int i = options.rangeMin; i <= options.rangeMax; i++) {
+        if (liq_image_add_fixed_color(inputLiqImage, (liq_color){uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255}) != LIQ_OK) {\
+            fprintf(stderr, "Failed to add color to image\n");
+            result = EXIT_FAILURE;
+            goto exit;
+        }
     }
 
     liq_result *quantizationResult;
-    liq_image_quantize(inputLiqImage, attr, &quantizationResult);
+    if (liq_image_quantize(inputLiqImage, attr, &quantizationResult) != LIQ_OK) {
+        fprintf(stderr, "Failed to quantize image\n");
+        result = EXIT_FAILURE;
+        goto exit;
+    }
 
     unsigned char* quantizedImage = (unsigned char*)malloc(inputWidth * inputHeight);
 
-    liq_write_remapped_image(quantizationResult, inputLiqImage, quantizedImage, inputWidth * inputHeight);
+    if (liq_write_remapped_image(quantizationResult, inputLiqImage, quantizedImage, inputWidth * inputHeight) != LIQ_OK) {
+        fprintf(stderr, "Failed to write remapped image\n");
+        result = EXIT_FAILURE;
+        goto exit;
+    }
+
     const liq_palette *palette = liq_get_palette(quantizationResult);
     
     LodePNGState state;
@@ -218,11 +252,19 @@ int main(int argc, char** argv) {
             lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
         }
     }
-    else
+    else if (options.bitDepth == 8)
     {
         for (int i = 0; i < countOfUniquePaletteColors; i++) {
+            if ((unsigned char)uniqueRgbPaletteColors[i].R != palette->entries[i].r || (unsigned char)uniqueRgbPaletteColors[i].G != palette->entries[i].g || (unsigned char)uniqueRgbPaletteColors[i].B != palette->entries[i].b) {
+                printf("Palette mismatch: [%d] %d %d %d != %d %d %d\n", i, (unsigned char)uniqueRgbPaletteColors[i].R, (unsigned char)uniqueRgbPaletteColors[i].G, (unsigned char)uniqueRgbPaletteColors[i].B, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b);
+            }
             lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
             lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+        }
+
+        for (int i = 0; i < palette->count; i++) {
+            lodepng_palette_add(&state.info_png.color, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
+            lodepng_palette_add(&state.info_raw, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
         }
     }
 
@@ -237,7 +279,8 @@ int main(int argc, char** argv) {
     memset(outputImage, 0, imageSize);
     if (!outputImage) {
         perror("Failed to allocate memory for image");
-        return EXIT_FAILURE;
+        result = EXIT_FAILURE;
+        goto exit;
     }
 
     if (options.bitDepth == 4)
@@ -257,26 +300,25 @@ int main(int argc, char** argv) {
         }
     }
 
-    liq_result_destroy(quantizationResult);
-    liq_image_destroy(inputLiqImage);
-    free(quantizedImage);
-
     unsigned char* buffer;
     size_t buffer_size;
     if (lodepng_encode(&buffer, &buffer_size, outputImage, inputWidth, inputHeight, &state)) {
         fprintf(stderr, "Encoder error: %s\n", lodepng_error_text(state.error));
-        free(outputImage);
-        lodepng_state_cleanup(&state);
-        return EXIT_FAILURE;
+        result = EXIT_FAILURE;
+        goto exit;
     }
 
     if (lodepng_save_file(buffer, buffer_size, options.outputFilename)) {
         fprintf(stderr, "Error saving PNG file\n");
-        free(outputImage);
-        free(buffer);
-        lodepng_state_cleanup(&state);
-        return EXIT_FAILURE;
+        result = EXIT_FAILURE;
+        goto exit;
     }
+
+exit:
+
+    liq_result_destroy(quantizationResult);
+    liq_image_destroy(inputLiqImage);
+    free(quantizedImage);
     
     free(outputImage);
     free(buffer);

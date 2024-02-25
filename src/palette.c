@@ -92,7 +92,7 @@ void read_act_pal(FILE* file, Color **colorPalette, int* paletteCount, int *tran
             return;
         }
 
-        *colorPalette = (Color*)realloc(*colorPalette, palCount * sizeof(Color));
+        *colorPalette = (Color*)realloc(*colorPalette, SWAP_SHORT(palCount) * sizeof(Color));
         *paletteCount = SWAP_SHORT(palCount);
         *transparentIndex = SWAP_SHORT(alphaIndex);
     } else {

@@ -1539,7 +1539,7 @@ static liq_result *pngquant_quantize(histogram *hist, const liq_attr *options, c
         }
     }
 
-    sort_palette(acolormap, options);
+    //sort_palette(acolormap, options);
 
     liq_result *result = options->malloc(sizeof(liq_result));
     if (!result) return NULL;
