@@ -255,16 +255,8 @@ int main(int argc, char** argv) {
     else if (options.bitDepth == 8)
     {
         for (int i = 0; i < countOfUniquePaletteColors; i++) {
-            if ((unsigned char)uniqueRgbPaletteColors[i].R != palette->entries[i].r || (unsigned char)uniqueRgbPaletteColors[i].G != palette->entries[i].g || (unsigned char)uniqueRgbPaletteColors[i].B != palette->entries[i].b) {
-                printf("Palette mismatch: [%d] %d %d %d != %d %d %d\n", i, (unsigned char)uniqueRgbPaletteColors[i].R, (unsigned char)uniqueRgbPaletteColors[i].G, (unsigned char)uniqueRgbPaletteColors[i].B, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b);
-            }
             lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
             lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
-        }
-
-        for (int i = 0; i < palette->count; i++) {
-            lodepng_palette_add(&state.info_png.color, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
-            lodepng_palette_add(&state.info_raw, palette->entries[i].r, palette->entries[i].g, palette->entries[i].b, 255);
         }
     }
 
