@@ -272,8 +272,6 @@ int main(int argc, char** argv) {
             liq_result_destroy(quantizationResult);
             liq_image_destroy(inputLiqImage);
         }
-
-        printf("Using Slot %d\n", options.slot);
     }
 
     if (options.slot != -1)
@@ -281,6 +279,8 @@ int main(int argc, char** argv) {
         options.bitDepth = 4;
         options.rangeMin = options.slot * 16;
         options.rangeMax = options.rangeMin + 15;
+
+        printf("slot: %d\n", options.slot);
     }
 
     if (options.rangeMax == -1) {
@@ -299,6 +299,9 @@ int main(int argc, char** argv) {
         result = EXIT_FAILURE;
         goto main_exit;
     }
+
+    const liq_remapping_result *mappingResult = quantizationResult->remapping;
+    printf("palette_error: %f\n", mappingResult->palette_error);
 
     const liq_palette *palette = liq_get_palette(quantizationResult);
     
