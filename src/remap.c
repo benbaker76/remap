@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 #include <getopt.h>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
@@ -13,6 +14,17 @@
 #include "palette.h"
 #include "lodepng.h"
 #include "libimagequant.h"
+
+static struct options {
+    const char* inputFilename;
+    const char* paletteFilename;
+    const char* outputFilename;
+    int rangeMin;
+    int rangeMax;
+    int bitDepth;
+    int slot;
+    bool autoSlot;
+} options;
 
 const char* get_filename_ext(const char* filename) {
     const char* dot = strrchr(filename, '.');
@@ -40,17 +52,49 @@ void libimagequant_log(const liq_attr*, const char *message, void* user_info) {
     //fprintf(stderr, "%s\n", message);
 }
 
-int main(int argc, char** argv) {
+int quantize_image(unsigned char* inputImage, int inputWidth, int inputHeight, rgbcolor* palette, liq_image **inputLiqImage, liq_result **quantizationResult)
+{
     int result = EXIT_SUCCESS;
 
-    static struct options {
-        const char* inputFilename;
-        const char* paletteFilename;
-        const char* outputFilename;
-        int rangeMin;
-        int rangeMax;
-        int bitDepth;
-    } options;
+    liq_attr *attr = liq_attr_create();
+    if (liq_set_max_colors(attr, options.rangeMax-options.rangeMin+1) != LIQ_OK)
+    {
+        fprintf(stderr, "Failed to set max colors\n");
+        result = EXIT_FAILURE;
+        goto quantize_image_exit;
+    }
+
+    if (liq_set_quality(attr, 0, 100) != LIQ_OK)
+    {
+        fprintf(stderr, "Failed to set quality\n");
+        result = EXIT_FAILURE;
+        goto quantize_image_exit;
+    }
+
+    liq_set_log_callback(attr, libimagequant_log, NULL);
+
+    *inputLiqImage = liq_image_create_rgba(attr, inputImage, inputWidth, inputHeight, 0);
+    for (int i = options.rangeMin; i <= options.rangeMax; i++) {
+        if (liq_image_add_fixed_color(*inputLiqImage, (liq_color){palette[i].R, palette[i].G, palette[i].B, 255}) != LIQ_OK) {
+            fprintf(stderr, "Failed to add color to image\n");
+            result = EXIT_FAILURE;
+            goto quantize_image_exit;
+        }
+    }
+
+    if (liq_image_quantize(*inputLiqImage, attr, quantizationResult) != LIQ_OK) {
+        fprintf(stderr, "Failed to quantize image\n");
+        result = EXIT_FAILURE;
+        goto quantize_image_exit;
+    }
+
+quantize_image_exit:
+
+    return result;
+}
+
+int main(int argc, char** argv) {
+    int result = EXIT_SUCCESS;
 
     options = (struct options) {
         .inputFilename = NULL,
@@ -58,12 +102,15 @@ int main(int argc, char** argv) {
         .outputFilename = NULL,
         .rangeMin = 0,
         .rangeMax = -1,
-        .bitDepth = 8
+        .bitDepth = 8,
+        .slot = -1,
+        .autoSlot = false
     };
 
     static struct option long_options[] = {
         {"range", required_argument, 0, 'r'},
         {"bits", required_argument, 0, 'b'},
+        {"slot", required_argument, 0, 's'},
         {0, 0, 0, 0}
     };
 
@@ -71,16 +118,23 @@ int main(int argc, char** argv) {
         "Usage: %s\n"
         "  --range min-max\n"
         "  --bits 4|8 (default 8)\n"
+        "  --slot auto|n (16 color palette slot)\n"
         "  <inputFilename> <paletteFilename> <outputFilename>\n";
 
     int option;
-    while ((option = getopt_long(argc, argv, "r:b:", long_options, NULL)) != -1) {
+    while ((option = getopt_long(argc, argv, "r:b:s:", long_options, NULL)) != -1) {
         switch (option) {
             case 'r':
                 sscanf(optarg, "%d-%d", &options.rangeMin, &options.rangeMax);
                 break;
             case 'b':
                 options.bitDepth = atoi(optarg);
+                break;
+            case 's':
+                if (strcmp(optarg, "auto") == 0) {
+                    options.autoSlot = true;
+                } else
+                    options.slot = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, usage_str, argv[0], argv[0]);
@@ -194,42 +248,48 @@ int main(int argc, char** argv) {
         free(rgbPaletteColors);
     }
 
+    liq_image *inputLiqImage;
+    liq_result *quantizationResult;
+    double min_error = DBL_MAX;
+
+    if (options.autoSlot) {
+        options.bitDepth = 4;
+
+        for (int i = 0; i < 16; i++) {
+            options.rangeMin = i * 16;
+            options.rangeMax = options.rangeMin + 15;
+            
+            if (quantize_image(inputImage, inputWidth, inputHeight, uniqueRgbPaletteColors, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
+                result = EXIT_FAILURE;
+                goto main_exit;
+            }
+
+            if (quantizationResult->palette_error < min_error) {
+                min_error = quantizationResult->palette_error;
+                options.slot = i;
+            }
+
+            liq_result_destroy(quantizationResult);
+            liq_image_destroy(inputLiqImage);
+        }
+
+        printf("Using Slot %d\n", options.slot);
+    }
+
+    if (options.slot != -1)
+    {
+        options.bitDepth = 4;
+        options.rangeMin = options.slot * 16;
+        options.rangeMax = options.rangeMin + 15;
+    }
+
     if (options.rangeMax == -1) {
         options.rangeMax = countOfUniquePaletteColors - 1;
     }
 
-    liq_attr *attr = liq_attr_create();
-    if (liq_set_max_colors(attr, options.rangeMax-options.rangeMin+1) != LIQ_OK)
-    {
-        fprintf(stderr, "Failed to set max colors\n");
+    if (quantize_image(inputImage, inputWidth, inputHeight, uniqueRgbPaletteColors, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
         result = EXIT_FAILURE;
-        goto exit;
-    }
-
-    if (liq_set_quality(attr, 0, 100) != LIQ_OK)
-    {
-        fprintf(stderr, "Failed to set quality\n");
-        result = EXIT_FAILURE;
-        goto exit;
-    }
-
-    liq_set_log_callback(attr, libimagequant_log, NULL);
-
-    liq_image *inputLiqImage = liq_image_create_rgba(attr, inputImage, inputWidth, inputHeight, 0);
-
-    for (int i = options.rangeMin; i <= options.rangeMax; i++) {
-        if (liq_image_add_fixed_color(inputLiqImage, (liq_color){uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255}) != LIQ_OK) {\
-            fprintf(stderr, "Failed to add color to image\n");
-            result = EXIT_FAILURE;
-            goto exit;
-        }
-    }
-
-    liq_result *quantizationResult;
-    if (liq_image_quantize(inputLiqImage, attr, &quantizationResult) != LIQ_OK) {
-        fprintf(stderr, "Failed to quantize image\n");
-        result = EXIT_FAILURE;
-        goto exit;
+        goto main_exit;
     }
 
     unsigned char* quantizedImage = (unsigned char*)malloc(inputWidth * inputHeight);
@@ -237,7 +297,7 @@ int main(int argc, char** argv) {
     if (liq_write_remapped_image(quantizationResult, inputLiqImage, quantizedImage, inputWidth * inputHeight) != LIQ_OK) {
         fprintf(stderr, "Failed to write remapped image\n");
         result = EXIT_FAILURE;
-        goto exit;
+        goto main_exit;
     }
 
     const liq_palette *palette = liq_get_palette(quantizationResult);
@@ -272,7 +332,7 @@ int main(int argc, char** argv) {
     if (!outputImage) {
         perror("Failed to allocate memory for image");
         result = EXIT_FAILURE;
-        goto exit;
+        goto main_exit;
     }
 
     if (options.bitDepth == 4)
@@ -297,20 +357,20 @@ int main(int argc, char** argv) {
     if (lodepng_encode(&buffer, &buffer_size, outputImage, inputWidth, inputHeight, &state)) {
         fprintf(stderr, "Encoder error: %s\n", lodepng_error_text(state.error));
         result = EXIT_FAILURE;
-        goto exit;
+        goto main_exit;
     }
 
     if (lodepng_save_file(buffer, buffer_size, options.outputFilename)) {
         fprintf(stderr, "Error saving PNG file\n");
         result = EXIT_FAILURE;
-        goto exit;
+        goto main_exit;
     }
 
-exit:
+main_exit:
 
+    free(quantizedImage);
     liq_result_destroy(quantizationResult);
     liq_image_destroy(inputLiqImage);
-    free(quantizedImage);
     
     free(outputImage);
     free(buffer);
