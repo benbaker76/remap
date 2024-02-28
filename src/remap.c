@@ -5,10 +5,6 @@
 #include <math.h>
 #include <float.h>
 #include <getopt.h>
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb/stb_image.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb/stb_image_write.h"
 #include "convert.h"
 #include "diff.h"
 #include "palette.h"
@@ -164,11 +160,34 @@ int main(int argc, char** argv) {
     const char* paletteFileExtension = get_filename_ext(options.paletteFilename);
     const char* outputFileExtension = get_filename_ext(options.outputFilename);
 
-    int inputWidth, inputHeight, inputFormat;
-    unsigned char* inputImage = stbi_load(options.inputFilename, &inputWidth, &inputHeight, &inputFormat, STBI_rgb_alpha);
+    unsigned char* inputImage = NULL;
+    int inputWidth, inputHeight, inputFormat = 4;
+    unsigned char* png = NULL;
+    size_t pngsize;
+    LodePNGState state;
+
+    lodepng_state_init(&state);
+    lodepng_load_file(&png, &pngsize, options.inputFilename);
+    result = lodepng_decode(&inputImage, &inputWidth, &inputHeight, &state, png, pngsize);
+
+    if(result)
+    {
+        printf("decoder error! %u: %s\n", result, lodepng_error_text(result));
+        lodepng_state_cleanup(&state);
+        free(png);
+        result = EXIT_FAILURE;
+        goto main_exit;
+    }
+
+    LodePNGColorMode* color = &state.info_png.color;
+    int inputPaletteCount = color->palettesize;
+
+    lodepng_state_cleanup(&state);
+    free(png);
+
+    printf("input: %s %dx%d\n", options.inputFilename, inputWidth, inputHeight);
 
     unsigned char* paletteImage = NULL;
-    int paletteWidth, paletteHeight, paletteFormat;
     Color* colorPalette = NULL;
     int paletteCount = 0, transparentIndex = -1;
 	if (strcmp(paletteFileExtension, "act") == 0) {
@@ -180,72 +199,51 @@ int main(int argc, char** argv) {
 	} else if (strcmp(paletteFileExtension, "txt") == 0) {
 		read_palette(options.paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
 	} else if (strcmp(paletteFileExtension, "png") == 0) {
-		paletteImage = stbi_load(options.paletteFilename, &paletteWidth, &paletteHeight, &paletteFormat, 0);
+        size_t pngsize;
+        unsigned width, height;
+
+        lodepng_state_init(&state);
+
+        lodepng_load_file(&png, &pngsize, options.paletteFilename);
+        result = lodepng_decode(&paletteImage, &width, &height, &state, png, pngsize);
+
+        if(result)
+        {
+            printf("decoder error %u: %s\n", result, lodepng_error_text(result));
+            lodepng_state_cleanup(&state);
+            free(png);
+            result = EXIT_FAILURE;
+            goto main_exit;
+        }
+
+        LodePNGColorMode* color = &state.info_png.color;
+        paletteCount = color->palettesize;
+        colorPalette = (Color*)malloc(paletteCount * sizeof(Color));
+        
+        if(color->colortype == LCT_PALETTE) {
+            for(size_t i = 0; i < paletteCount; i++) {
+                colorPalette[i].R = color->palette[i * 4 + 0];
+                colorPalette[i].G = color->palette[i * 4 + 1];
+                colorPalette[i].B = color->palette[i * 4 + 2];
+            }
+        }
+
+        lodepng_state_cleanup(&state);
+        free(png);
 	} else {
 		fprintf(stderr, "The file extension \"%s\" is not supported. Please use one of the following instead: act, pal, gpl, txt, png\n", options.paletteFilename);
+        result = EXIT_FAILURE;
+        goto main_exit;
 	}
 
-    rgbcolor* uniqueRgbPaletteColors = NULL;
-    int countOfUniquePaletteColors = 0;
+    int outputColorPaletteCount = paletteCount;
 
-    if (colorPalette != NULL)
-    {
-        paletteWidth = paletteCount;
-        paletteHeight = 1;
-        paletteFormat = 3;
-        countOfUniquePaletteColors = paletteCount;
-
-        uniqueRgbPaletteColors = (rgbcolor*) malloc(paletteCount * sizeof(rgbcolor));
-        for (int i = 0; i < paletteCount; i++) {
-            float R = (float) colorPalette[i].R;
-            float G = (float) colorPalette[i].G;
-            float B = (float) colorPalette[i].B;
-            rgbcolor_init(uniqueRgbPaletteColors + i, R, G, B);
-        }
-    }
-    else
-    {
-        rgbcolor* rgbPaletteColors = (rgbcolor*) malloc(paletteWidth * paletteHeight * sizeof(rgbcolor));
-        uniqueRgbPaletteColors = (rgbcolor*) malloc(paletteWidth * paletteHeight * sizeof(rgbcolor));
-        for (int i = 0; i < paletteWidth * paletteHeight; i++) {
-            float R = (float) paletteImage[i * paletteFormat + 0];
-            float G = (float) paletteImage[i * paletteFormat + 1];
-            float B = (float) paletteImage[i * paletteFormat + 2];
-
-            if (paletteFormat == 4) {
-                float A = (float) paletteImage[i * paletteFormat + 3] / 255.0f;
-                rgbacolor rgba;
-                rgbacolor_init(&rgba, R, G, B, A);
-                rgbcolor rgb;
-                rgba_to_rgb(&rgba, &rgb, NULL);
-                R = rgb.R;
-                G = rgb.G;
-                B = rgb.B;
-            }
-            
-            rgbcolor_init(rgbPaletteColors + i, R, G, B);
-        }
-
-        qsort(rgbPaletteColors, paletteWidth * paletteHeight, sizeof(rgbcolor), compareRgbcolor);
-
-        rgbcolor uniqueRgbPaletteColors[paletteWidth * paletteHeight];
-        int countOfUniquePaletteColors = 0;
-        for (int i = 0; i < paletteWidth * paletteHeight; i++) {
-            rgbcolor* rgbPaletteColor = rgbPaletteColors + i;
-            float R = rgbPaletteColor->R;
-            float G = rgbPaletteColor->G;
-            float B = rgbPaletteColor->B;
-            if (i == 0) {
-                rgbcolor_init(uniqueRgbPaletteColors + countOfUniquePaletteColors++, R, G, B);
-            } else {
-                rgbcolor* lastUniqueRgbPaletteColor = uniqueRgbPaletteColors + countOfUniquePaletteColors - 1;
-                if (R != lastUniqueRgbPaletteColor->R || G != lastUniqueRgbPaletteColor->G || B != lastUniqueRgbPaletteColor->B) {
-                    rgbcolor_init(uniqueRgbPaletteColors + countOfUniquePaletteColors++, R, G, B);
-                }
-            }
-        }
-
-        free(rgbPaletteColors);
+    rgbcolor *outputColorPalette = (rgbcolor*)malloc(paletteCount * sizeof(rgbcolor));
+    for (int i = 0; i < paletteCount; i++) {
+        float R = (float) colorPalette[i].R;
+        float G = (float) colorPalette[i].G;
+        float B = (float) colorPalette[i].B;
+        rgbcolor_init(outputColorPalette + i, R, G, B);
     }
 
     liq_image *inputLiqImage;
@@ -259,7 +257,7 @@ int main(int argc, char** argv) {
             options.rangeMin = i * 16;
             options.rangeMax = options.rangeMin + 15;
             
-            if (quantize_image(inputImage, inputWidth, inputHeight, uniqueRgbPaletteColors, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
+            if (quantize_image(inputImage, inputWidth, inputHeight, outputColorPalette, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
                 result = EXIT_FAILURE;
                 goto main_exit;
             }
@@ -284,10 +282,10 @@ int main(int argc, char** argv) {
     }
 
     if (options.rangeMax == -1) {
-        options.rangeMax = countOfUniquePaletteColors - 1;
+        options.rangeMax = outputColorPaletteCount - 1;
     }
 
-    if (quantize_image(inputImage, inputWidth, inputHeight, uniqueRgbPaletteColors, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
+    if (quantize_image(inputImage, inputWidth, inputHeight, outputColorPalette, &inputLiqImage, &quantizationResult) == EXIT_FAILURE) {
         result = EXIT_FAILURE;
         goto main_exit;
     }
@@ -300,26 +298,26 @@ int main(int argc, char** argv) {
         goto main_exit;
     }
 
-    const liq_remapping_result *mappingResult = quantizationResult->remapping;
-    printf("palette_error: %f\n", mappingResult->palette_error);
-
     const liq_palette *palette = liq_get_palette(quantizationResult);
-    
-    LodePNGState state;
+    const liq_remapping_result *mappingResult = quantizationResult->remapping;
+    int quality_percent = liq_get_quantization_quality(quantizationResult);
+
+    printf("remapped image from %d to %d colors...MSE=%.3f (Q=%d)\n", inputPaletteCount, palette->count, mappingResult->palette_error, quality_percent);
+
     lodepng_state_init(&state);
 
     if (options.bitDepth == 4)
     {
         for (int i = options.rangeMin; i <= options.rangeMax; i++) {
-            lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
-            lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+            lodepng_palette_add(&state.info_png.color, outputColorPalette[i].R, outputColorPalette[i].G, outputColorPalette[i].B, 255);
+            lodepng_palette_add(&state.info_raw, outputColorPalette[i].R, outputColorPalette[i].G, outputColorPalette[i].B, 255);
         }
     }
     else if (options.bitDepth == 8)
     {
-        for (int i = 0; i < countOfUniquePaletteColors; i++) {
-            lodepng_palette_add(&state.info_png.color, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
-            lodepng_palette_add(&state.info_raw, uniqueRgbPaletteColors[i].R, uniqueRgbPaletteColors[i].G, uniqueRgbPaletteColors[i].B, 255);
+        for (int i = 0; i < outputColorPaletteCount; i++) {
+            lodepng_palette_add(&state.info_png.color, outputColorPalette[i].R, outputColorPalette[i].G, outputColorPalette[i].B, 255);
+            lodepng_palette_add(&state.info_raw, outputColorPalette[i].R, outputColorPalette[i].G, outputColorPalette[i].B, 255);
         }
     }
 
@@ -337,7 +335,6 @@ int main(int argc, char** argv) {
         result = EXIT_FAILURE;
         goto main_exit;
     }
-
     if (options.bitDepth == 4)
     {
         for (int i = 0; i < inputWidth * inputHeight; i++) {
@@ -371,6 +368,7 @@ int main(int argc, char** argv) {
 
 main_exit:
 
+    free(outputColorPalette);
     free(quantizedImage);
     liq_result_destroy(quantizationResult);
     liq_image_destroy(inputLiqImage);
@@ -379,8 +377,8 @@ main_exit:
     free(buffer);
     lodepng_state_cleanup(&state);
 
-    stbi_image_free(inputImage);
-    stbi_image_free(paletteImage);
+    free(inputImage);
+    free(paletteImage);
 
     return EXIT_SUCCESS;
 }

@@ -3,7 +3,6 @@ project(remap)
 
 include_directories(
     include
-    lib/stb/include
 )
 
 add_library(remap_library STATIC
