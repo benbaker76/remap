@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
         "Usage: %s\n"
         "  --range min-max\n"
         "  --bits 4|8 (default 8)\n"
-        "  --slot auto|n (16 color palette slot)\n"
+        "  --slot n|auto (16 color palette slot)\n"
         "  <inputFilename> <paletteFilename> <outputFilename>\n";
 
     int option;
@@ -457,17 +457,42 @@ main_exit:
     liq_result_destroy(quantizationResult);
     liq_image_destroy(inputLiqImage);
 
-    free(pngInput);
-    free(pngPalette);
-    free(pngOutput);
+    if (pngInput != NULL)
+    {
+        free(pngInput);
 
-    lodepng_state_cleanup(&inputState);
-    lodepng_state_cleanup(&paletteState);
-    lodepng_state_cleanup(&outputState);
+        if (inputImage != NULL)
+        {
+            lodepng_state_cleanup(&inputState);
 
-    free(inputImage);
-    free(paletteImage);
-    free(outputImage);
+            free(inputImage);
+        }
+    }
+
+    if (pngPalette != NULL)
+    {
+        free(pngPalette);
+
+        if (paletteImage != NULL)
+        {
+            lodepng_state_cleanup(&paletteState);
+
+            free(paletteImage);
+        }
+    }
+
+
+    if (pngOutput != NULL)
+    {
+        free(pngOutput);
+
+        if (outputImage != NULL)
+        {
+            lodepng_state_cleanup(&outputState);
+
+            free(outputImage);
+        }
+    }
 
     return EXIT_SUCCESS;
 }
