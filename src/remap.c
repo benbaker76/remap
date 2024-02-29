@@ -253,7 +253,7 @@ int main(int argc, char** argv) {
 
     lodepng_state_init(&inputState);
 
-    inputState.info_raw.colortype = LCT_RGB;
+    inputState.info_raw.colortype = LCT_RGBA;
     inputState.info_raw.bitdepth = 8;
 
     inputState.decoder.color_convert = 1;
@@ -270,8 +270,7 @@ int main(int argc, char** argv) {
 
     LodePNGColorMode* color = &inputState.info_png.color;
     const char *colorType = get_color_type(color->colortype);
-    //int inputFormat = (color->colortype == LCT_RGBA || color->colortype == LCT_GREY_ALPHA ? 4 : 3);
-    int inputFormat = 3;
+    int inputFormat = (color->colortype == LCT_RGBA || color->colortype == LCT_GREY_ALPHA ? 4 : 3);
     int inputPaletteCount = (color->colortype == LCT_PALETTE ? color->palettesize : get_unique_color_palette_count(inputImage, inputWidth, inputHeight, inputFormat));
 
     printf("input: %s %dx%d (%s format, %d bits)\n", options.inputFilename, inputWidth, inputHeight, colorType, color->bitdepth);
