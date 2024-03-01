@@ -283,33 +283,7 @@ int main(int argc, char** argv) {
 	} else if (strcmp(paletteFileExtension, "txt") == 0) {
 		read_palette(options.paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
 	} else if (strcmp(paletteFileExtension, "png") == 0) {
-        size_t pngPalettesize;
-        unsigned width, height;
-
-        lodepng_state_init(&paletteState);
-
-        lodepng_load_file(&pngPalette, &pngPalettesize, options.paletteFilename);
-        result = lodepng_decode(&paletteImage, &width, &height, &paletteState, pngPalette, pngPalettesize);
-
-        if(result)
-        {
-            printf("Decoder error %u: %s\n", result, lodepng_error_text(result));
-            result = EXIT_FAILURE;
-            goto main_exit;
-        }
-
-        LodePNGColorMode* color = &paletteState.info_png.color;
-        
-        if(color->colortype == LCT_PALETTE) {
-            paletteCount = color->palettesize;
-            colorPalette = (Color*)malloc(paletteCount * sizeof(Color));
-
-            for(size_t i = 0; i < paletteCount; i++) {
-                colorPalette[i].R = color->palette[i * 4 + 0];
-                colorPalette[i].G = color->palette[i * 4 + 1];
-                colorPalette[i].B = color->palette[i * 4 + 2];
-            }
-        }
+        read_palette(options.paletteFilename, &colorPalette, &paletteCount, &transparentIndex);
 	} else {
 		fprintf(stderr, "The file extension \"%s\" is not supported. Please use one of the following instead: act, pal, gpl, txt, png\n", options.paletteFilename);
         result = EXIT_FAILURE;
@@ -408,9 +382,9 @@ int main(int argc, char** argv) {
     outputState.info_raw.bitdepth = options.bitDepth;
     outputState.encoder.auto_convert = 0;
 
-    int imageSize = (inputWidth * inputHeight * 4 + 7) / (options.bitDepth == 4 ? 8 : 1);
-    outputImage = (unsigned char*)malloc(imageSize);
-    memset(outputImage, 0, imageSize);
+    int bpp = lodepng_get_bpp(&outputState.info_raw);
+    int imageSize = (inputWidth * inputHeight * bpp + 7) / 8;
+    outputImage = (unsigned char*)calloc(imageSize, sizeof(unsigned char));
     if (!outputImage) {
         perror("Failed to allocate memory for image");
         result = EXIT_FAILURE;

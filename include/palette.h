@@ -12,6 +12,7 @@ typedef struct {
     unsigned char R;
     unsigned char G;
     unsigned char B;
+    unsigned char A;
 } Color;
 
 typedef enum {
@@ -22,7 +23,7 @@ typedef enum {
     PaintNET
 } PaletteFormat;
 
-void read_palette(const char* fileName, Color** colorPalette, int* paletteCount, int* transparentIndex);
-void write_palette(const char* fileName, Color* colorPalette, int paletteCount, int transparentIndex, PaletteFormat paletteFormat);
+int read_palette(const char* fileName, Color** colorPalette, int* paletteCount, int* transparentIndex);
+int write_palette(const char* fileName, Color* colorPalette, int paletteCount, int transparentIndex, PaletteFormat paletteFormat);
 
 #endif /* PALETTE_H */
