@@ -29,6 +29,7 @@ remap [options] <inputFilename> <paletteFilename> <outputFilename>
 | `-r min-max`    | `--range min-max` | Use a range of colors from the palette |
 | `-b 4\|8`        | `--bits 4\|8`      | Bit depth of png output (default 8) |
 | `-s n\|auto`     | `--slot n\|auto`   | 16 color palette slot |
+| `-m`            | `--mask`          | Generate a mask file |
 
 ## Example
 
