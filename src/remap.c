@@ -18,8 +18,8 @@ static struct options {
     int rangeMin;
     int rangeMax;
     int bitDepth;
-    int slot;
-    bool autoSlot;
+    int paletteSlot;
+    bool autoPaletteSlot;
     bool mask;
 } options;
 
@@ -341,8 +341,8 @@ int main(int argc, char** argv) {
         .rangeMin = 0,
         .rangeMax = -1,
         .bitDepth = 8,
-        .slot = -1,
-        .autoSlot = false,
+        .paletteSlot = -1,
+        .autoPaletteSlot = false,
         .mask = false
     };
 
@@ -372,9 +372,9 @@ int main(int argc, char** argv) {
                 break;
             case 's':
                 if (strcmp(optarg, "auto") == 0) {
-                    options.autoSlot = true;
+                    options.autoPaletteSlot = true;
                 } else
-                    options.slot = atoi(optarg);
+                    options.paletteSlot = atoi(optarg);
                 break;
             case 'm':
                 options.mask = true;
@@ -469,7 +469,7 @@ int main(int argc, char** argv) {
 
     double min_error = DBL_MAX;
 
-    if (options.autoSlot) {
+    if (options.autoPaletteSlot) {
         options.bitDepth = 4;
 
         for (int i = 0; i < 16; i++) {
@@ -483,7 +483,7 @@ int main(int argc, char** argv) {
 
             if (quantizationResult->palette_error < min_error) {
                 min_error = quantizationResult->palette_error;
-                options.slot = i;
+                options.paletteSlot = i;
             }
 
             liq_result_destroy(quantizationResult);
@@ -494,13 +494,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (options.slot != -1)
+    if (options.paletteSlot != -1)
     {
         options.bitDepth = 4;
-        options.rangeMin = options.slot * 16;
+        options.rangeMin = options.paletteSlot * 16;
         options.rangeMax = options.rangeMin + 15;
 
-        printf("slot: %d\n", options.slot);
+        printf("paletteSlot: %d\n", options.paletteSlot);
     }
 
     if (options.rangeMax == -1) {
