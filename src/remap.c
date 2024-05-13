@@ -135,6 +135,7 @@ int write_image_mask(unsigned char *inputImage, int inputWidth, int inputHeight)
 {
     int result = EXIT_SUCCESS;
     LodePNGState state;
+    lodepng_state_init(&state);
     unsigned char* outputImage = NULL, *pngOutput = NULL;
     unsigned char* maskFilename = NULL;
 
